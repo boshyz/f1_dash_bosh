@@ -1,4 +1,7 @@
-"""bosh_f1_season_sch gets the season scehdule from jolpica"""
+"""A module to retrieve the season schedule results from the jolpica API race end point and store 
+in specified table of database
+ uses this doc as reference: https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/races.md
+ """
 
 import requests
 import pandas as pd
@@ -17,6 +20,16 @@ from utils import db_update_check, convert_df_types, create_date_field, update_t
 
 
 def get_season_schedule_url(year:int= None):
+    """
+    for a given 4 digit year, constructs the season api end point as a string needed to extract the season schedule.
+
+    Args:
+      year:int:  (Default value = None)
+
+    Returns:
+      string of end season api end point
+
+    """
     current_year = dt.date.today().year
     # return the current year if empty else use the input
     Year = [current_year if year == None else year][0]
@@ -25,6 +38,16 @@ def get_season_schedule_url(year:int= None):
 
 
 def get_season_schedule(year:int= None):
+    """
+    gets the season schedule with the race name, for season, round and date from the api and stores it as a df
+
+    Args:
+      year:int:  (Default value = None)
+
+    Returns:
+       season schedule api end results stored a pandas dataframe
+
+    """
     #get season url
     season_url = get_season_schedule_url(year)
     #requests pull
@@ -38,6 +61,7 @@ def get_season_schedule(year:int= None):
         #replace column names to be easier to use in python replace "." to "_"
         data.columns = data.columns.str.replace('.','_')
         data.rename(str.lower, axis = 1, inplace=True)
+        #convert columns to correct data type
         data = convert_df_types(data,['season','round'],int)
         #make all date fields datetime
         date_cols = data.filter(like = 'date', axis = 1).columns
@@ -45,7 +69,23 @@ def get_season_schedule(year:int= None):
         return sch
 
 def get_season_sch_db(engine, schema:str, table:str, year=None)->pd.DataFrame:
-    """uses db for season sch to get race urls bc """
+    """uses given year to retrieve the season schedule for that year from the database
+    to create race urls to extract race results data from the api endpoint.
+
+    Args:
+      engine:
+        sqlalchemy engine for database updates and retrivals 
+      schema (str):
+        name of schema in database 
+      table (str):
+        name of table in database 
+      year:  (Default value = None)
+        default = None gets latest year, else enter 4 digit int to represent season 
+
+    Returns:
+      pandas dataframe of season schedule retrieved from database based on table and schema for the given year
+
+    """
 
     date_check = dt.datetime.today() -dt.timedelta(days=1)
     Year= date_check.year
@@ -59,10 +99,25 @@ def get_season_sch_db(engine, schema:str, table:str, year=None)->pd.DataFrame:
 
 
 def check_seasons( engine, schema:str, table:str):
-    """Sense checks that the the latest year's season schedule 
-    is in db, if it's not the latest season's schedule is not in db
+    """Sense checks that the the latest year's season schedule
+    is in database.
+    if the latest season's schedule is not in database
     it pulls it from the api and updates it to the database
-    checks that the current year is equal to the latest year in the database"""
+    check sees that the current year is equal to the latest year in the database
+
+    Args:
+      engine: 
+        the database sqlalchemy engine
+      schema (str):
+        name of the schema in your database 
+      table (str): 
+        name of table in database
+
+    Returns:
+       message about if latest year's season schedule is in the database
+    
+
+    """
     
 
     # there is at least a 1 day delay so only return race rounds that have commenced atleast 5 days before today's date
@@ -84,13 +139,34 @@ def check_seasons( engine, schema:str, table:str):
             update_table(sch,engine, schema, table)
             print(f'Updating database seasons table with {Year}')
         else:
-            print(f"Schdule for year {Year} not availiable in joplica API yet try again later")
+            print(f"Schedule for year {Year} not availiable in joplica API yet try again later")
     else:
         print(f"Latest season in {table} table is {max(years)}")
+
+
+
         
 def db_seasons_update(engine,schema:str, table:str,start:int,*end):
-    """checks if season entered already in seasons table in db if so prints that data is present
-    else updates with the range"""
+    """checks if season entered already in seasons table in database
+    if season present, prints that data is present, else updates database table with the range of season(s) entered
+
+    Args:
+      engine: 
+        the database sqlalchemy engine
+      schema (str):
+        name of the schema in your database 
+      table (str): 
+        name of table in database
+      start (int):
+        specifies the season of interest as a 4 digit int, represents the oldest season data you want to store the database 
+      end (int)   (Default value = None): 
+        specifies the season of interest as a 4 digit int, represents the latest season data you want in the database, 
+        default value = None will set it to current year
+
+    Returns:
+       message about what seasons are in season schedule table of database
+
+    """
     #seasons currently in seasons table in db
     seasons_in_db = pd.read_sql(f'select distinct season from {schema}.{table}',engine).season.unique()
     #if end year given 
@@ -113,14 +189,30 @@ def db_seasons_update(engine,schema:str, table:str,start:int,*end):
             print(f"season:{start} already in season table")
 
             
- #db_points_update(engine, 'f1_dash', 'race') 
-def backdate_seasons_excel(engine,schema:str,col:str,season_table:str):
-    """updates season schedule data to xlxs for tableau dash
-    if season is missing current year """
+# back dates the season scheudles in excel file to populate tableau dash
+def backdate_seasons_excel(engine,schema:str,season_table:str):
+    """updates season schedule data to xlxs for tableau dashboard
+    
+
+    Args:
+      engine: 
+        sqlalchemy databasebase engine
+      schema (str):
+        name of database schemea
+      col (str): 
+        name of column you use to partition out the data from table by, should reflect the season for schedule table
+      season_table(str):
+        name of table that stores season
+
+    Returns:
+        xlxs file of season schedules in current repo to be used for tableau dash 
+        and message about ammedments/updates if any made
+
+    """
     excel = "season_schedule_for_tableau.xlsx"
     date_check_max = dt.datetime.today()
     Year= date_check_max.year
-    latest_season = pd.read_sql(f"SELECT MAX({col}) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
+    latest_season = pd.read_sql(f"SELECT MAX(season) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
     if latest_season == Year:
         print(f'The latest season avaliable is season {latest_season}') 
         #if latest season in excel is same as current year don't update        
@@ -136,7 +228,7 @@ def backdate_seasons_excel(engine,schema:str,col:str,season_table:str):
         #if the current date's year is not same as latest season in db pull from api to get result
         db_seasons_update(engine,schema, season_table,Year)
         #check if db now has latest season
-        latest_season = pd.read_sql(f"SELECT MAX({col}) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
+        latest_season = pd.read_sql(f"SELECT MAX(season) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
         if latest_season == Year:
             with pd.ExcelWriter(excel) as writer:
                 season = pd.read_sql(f'SELECT * FROM {schema}.{season_table} ', engine)
