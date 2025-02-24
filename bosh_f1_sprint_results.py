@@ -1,4 +1,7 @@
-#bosh_f1_season_race_results gets the season race results from jolpica
+"""A module to retrieve the sprint results from the jolpica API sprint end point
+ use this as reference: https://github.com/jolpica/jolpica-f1/tree/main/docs
+ """
+
 
 import requests
 import pandas as pd
@@ -15,7 +18,15 @@ from bosh_f1_race_results import get_race_url
              
 
 def get_sprint_results(sprint_url):
-    """takes a sprint end point url and returns the results in a df"""
+    """takes a sprint end point url and returns the results in a pandas df
+
+    Args:
+      sprint_url (str): 
+
+    Returns:
+       results of api endpoint as a pandas DataFrame
+
+    """
     #if time out occurs print the url that made it happen
     print(sprint_url)
     data = requests.get(sprint_url).json()
@@ -43,11 +54,28 @@ def get_sprint_results(sprint_url):
         return df
 
 def db_sprint_update(engine, schema:str, table:str,year=None):
-    """updates sprint table in db for the season,
-    if year is not set it will check see if the last sprint occured within the last 30 days if so it will delete it 
-    extract from api and replace the value in the db with the ones in the df
-    else year is set it will check what values are missing and update the missing rounds
-    if there is nothing missing it will print message all is up to date"""
+    """updates sprint table in the database for the season and round
+
+    if year is not set function will check to see if the last sprint occured within the last 30 days. 
+    if data was updated within last 30 days it will delete it from the database. 
+    once deleted it will pull fresh from the api and replace the value in the database with the ones in the returned dataframe.
+    If year is specified as 4 digit int, it will check what values are missing and update the missing rounds
+    If no rounds are missing for the season and the season is not the latest season, it will print message all is up to date
+
+    Args:
+      engine: 
+        the database sqlalchemy engine
+      schema (str):
+        name of the schema in your database 
+      table (str): 
+        name of table in database
+      year:  (Default value = None)
+        specifies the season of interest 4 digit int , default is none in which it takes the latest year
+
+    Returns:
+       message about database update 
+
+    """
 
         
     #if erorr is through catch the time 
