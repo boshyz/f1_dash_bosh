@@ -1,4 +1,7 @@
-#bosh_f1_season_race_results gets the season race results from jolpica
+"""A module to retrieve the laps data for a race during a round and season from the jolpica API lap end point and store 
+in specified table of database
+ uses this doc as reference: https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/laps.md
+ """
 
 import requests
 import pandas as pd
@@ -13,16 +16,38 @@ from bosh_f1_season_schedule import  check_seasons,get_season_sch_db
 from utils import  get_data, append_or_replace, clean_lap_position, update_table, create_date_field, convert_df_types
 
 def get_pit_url(year:int ,round:int)->str:
-    """makes pit stops url from season (year) and race (round)"""
+    """makes pit stops url from season (year) and race (round)
+
+    Args:
+      year (int):
+       season you want to query as 4 digit int year 
+      round (int):
+       round to represent race in season must be int
+
+    Returns (str):
+      pit url the end point url to get the pit stop info a given round in a season
+
+    """
     pit_url =f"https://api.jolpi.ca/ergast/f1/{year}/{round}/pitstops/"
     return pit_url
     
 def get_pitstops(year:int ,round:int)->pd.DataFrame:
     """returns df of pitstops data for a season and round
-    for some reason ergast and thus jolpica are both missing pit stops for 
-    f1 offical doesn't even have it when u can see it for other ones. 
+    for some reason ergast and thus jolpica are both missing pit stops for
+    f1 offical doesn't even have it when u can see it for other ones.
     https://www.formula1.com/en/results/2021/races/1074/belgium/race-result
-    example same season with pits https://www.formula1.com/en/results/2021/races/1068/azerbaijan/race-result"""
+    example same season with pits https://www.formula1.com/en/results/2021/races/1068/azerbaijan/race-result
+
+    Args:
+     year (int):
+       season you want to query as 4 digit int year 
+    round (int):
+       round to represent race in season must be int
+
+    Returns:
+       dataframe, uses the year and round to make pit url and returns end point data stored as a pandas df
+
+    """
     pit_url = get_pit_url(year,round)
     data = requests.get(pit_url).json()['MRData']['RaceTable']['Races']
     if len(data) == 0:
@@ -44,7 +69,26 @@ def get_pitstops(year:int ,round:int)->pd.DataFrame:
 
 def get_laps_url(engine, schema, table, year:int, round:int)->list:
     """returns the lap url for the api retrival by driver based on season and round
-    only returns drivers who are not already in lap table in database"""
+    only returns drivers who are not already in lap table in database
+
+    Args:
+      engine: 
+        sqlaclchemy create engine to access and modify database
+      schema (str): 
+        name of database schema
+      table (str):
+        name of database table for laps 
+      year:int: 
+        4 digit int to represent season
+      round:int: 
+        int to represent race/round in season
+
+    Returns:
+       laps_url: str/list of lap urls for drivers not in laps table in database
+       drivers: str/list of driverids for drivers not in laps table in database
+       
+
+    """
     
     #check that seasons is latest seasons if not update to the latest year in db for use by using 
     #race schedule api endpoint 
@@ -94,7 +138,16 @@ def get_laps_url(engine, schema, table, year:int, round:int)->list:
           
   
 def merge_laps_pits(laps:pd.DataFrame,pits:pd.DataFrame)->pd.DataFrame:
-    """merge laps data to pits stops data using the driverid, lap_number, season and round"""
+    """merge laps data to pits stops data using the driverid, lap_number, season and round
+
+    Args:
+      laps (pd.DataFrame): takes a df of the laps data produced from previous function
+      pits (pd.DataFrame): takes a df of the pits data produced from previous function
+
+    Returns:
+      merged dataframe of laps data to pits data based on driverid, lap_number, season and round
+
+    """
     #if laps df is empty return a empty df with col names
     if laps.empty ==True:
         laps_data = pd.DataFrame()
@@ -109,7 +162,16 @@ def merge_laps_pits(laps:pd.DataFrame,pits:pd.DataFrame)->pd.DataFrame:
         return  laps_pits
     
 def get_laps_single(lap_url:str):
-    """pulls from api to get data for a singular driver during a season and round entered as a str lap_url"""
+    """pulls from api to get data for a singular driver during a season and round entered as a str lap_url
+
+    Args:
+      lap_url (str):
+        lap url for a singular driver 
+
+    Returns:
+       dataframe with laps data for a single driver in a given round during a season
+
+    """
     #print lap_url so can trouble shoot which end point if breaks 
     print(lap_url)
     
@@ -138,8 +200,17 @@ def get_laps_single(lap_url:str):
         return laps_data
 
 def get_laps_round_update(laps_url)->pd.DataFrame:
-    """"gets list of laps urls for each driver for a given round (race) and season and pulls requests 
-    for each and returns as one df"""
+    """"gets list of laps urls for each driver for a given round (race) and season and pulls requests
+    for each and returns as one df
+
+    Args:
+      laps_url (str):
+        string of url(s) end point to retrieve lap data for a given round in a season for a driver 
+
+    Returns:
+       dataframe of all laps data by drivers for a given round in a season
+
+    """
     #when races have not occured yet there will be no laps data so return empty df
     if len(laps_url) ==0:
         fin_laps =  pd.DataFrame()
@@ -165,7 +236,23 @@ def get_laps_data(engine, schema, table, year=None):
     """updates and uploads to the db the laps data for a season and round
     There is no deleting bc once a race has been run, it doesn't change the out come of the race
     The laps data is joined to the pits data to know when each driver pitted
-    for the latest update the year is left as none and is updated """
+    for the latest update the year is left as none and is updated
+
+    Args:
+      engine:
+       sqlalchemy engine to update/modify database 
+      schema (str):
+       database schema name 
+      table (str):
+        database table name to store laps data 
+      year:  (Default value = None)
+         4 digit int for season if default and left as none uses latest year
+
+    Returns:
+      message to check if laps table for a given season has data for all rounds
+      and that each round has laps data for each driver who drove during that round
+
+    """
          
     #if erorr is through catch the time 
     time_to_try_again_datetime = dt.datetime.now() +dt.timedelta(hours=1)
