@@ -1,3 +1,8 @@
+"""A module to retrieve the race outcomes from the jolpica API race end point and store 
+in specified table of database
+ uses this doc as reference: https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/results.md
+ """
+
 #bosh_f1_season_race_results gets the season race results from jolpica
 
 import requests
@@ -16,10 +21,26 @@ from utils import db_update_check,  convert_df_types ,get_missing_rounds, get_ro
 
 def get_race_url(engine, schema:str, table:str,year =None):
     """returns the race or sprint url tha needs to pulled from the api for a season
-    races urls are the base for race results data
+    races urls are the base to retrieve race results data
     race urls also serve as basis to retrieve qualifying and pit stop data
-    uses the season schedule to make the race url so table is seasons table
-    note data for the latest race does not populate in jolipica api database till day after"""
+    uses the season schedule stored in database to make the race url
+    note data for the latest race does not populate in jolipica api database till day after
+
+    Args:
+      engine: 
+       sqlalchmey database engine
+      schema (str): 
+       name of database schema
+      table (str):
+       name of database table 
+      year:  (Default value = None)
+
+    Returns:
+      2 lists:
+      race_results_url: a of the race urls for rounds that are missing so can use requests to extract data
+      last_30_day_rounds/missing rounds: list of ints of missing rounds for that season
+
+    """
 
     #check that seasons is latest seasons if not update to the latest year in db for use by using 
     #race schedule api endpoint 
@@ -72,15 +93,22 @@ def get_race_url(engine, schema:str, table:str,year =None):
 
 
 def get_race_qualifying_results(qualifying_url)-> pd.DataFrame:
-    """returns the RACE (excludes sprint results) results for a race selected using round and year
-    and the laps urls by driver to retrieve the lap position per driver
-    actual race figures includes points!!!
-    results end point
-
+    """returns the race qualifying results for a race selected using round and year
+    qualifying results may differ to starting position because of grid penalties
+    includes quali time for each quarter if avaliable by driver and final qualifying position
+    
     uses jolpica endpoint: http://api.jolpi.ca/ergast/f1/{year}/{r}/qualifying/'
     
     #for some weird reason austin 2015 has no Q3 in api which matches this
     https://www.formula1.com/en/results/2015/races/933/united-states/qualifying
+
+    Args:
+      qualifying_url (str):
+        str end point for a given round and season to retrieve the qualifying results  
+
+    Returns:
+      pandas dataframe of qualifying results for given qualifying url specified for season and round
+
     """
 
     #if time out occurs print the url that made it happen
@@ -122,10 +150,19 @@ def get_race_results(race_url)-> pd.DataFrame:
     and the laps urls by driver to retrieve the lap position per driver
     actual race figures includes points!!!
     results end point
-
+    
     uses jolpica endpoint: http://api.jolpi.ca/ergast/f1/{year}/{r}/results/
+    
+           '
 
-           '"""
+    Args:
+      race_url (str): 
+       string end point for a given round and season to retrieve the race outcomes with points  
+
+    Returns:
+      pandas dataframe of results for race from results end point. 
+
+    """
 
     #if time out occurs print the url that made it happen
     print(race_url)
@@ -167,7 +204,17 @@ def get_race_results(race_url)-> pd.DataFrame:
 
 def get_fin_race_results(race_url):
     """combines, the qualifiyng Q1, Q2, Q3, race results for a given round in a season race
-    will only qualifying if race has not occured yet"""
+    will only qualifying if race has not occured yet
+
+    Args:
+      race_url (str): 
+       takes race url generated from previous function that is used to extract api results for given sesaon and round
+
+    Returns:
+      pandas dataframe of merged quali and race results on season, round and driver id 
+      for the season and round in race url
+
+    """
     
     #f1 sprints and qualifying occur before races
 
@@ -211,6 +258,20 @@ def db_races_update(engine, schema:str, table:str,year=None):
     """updates db with data correctly
     
     #if only one round was entered
+
+    Args:
+      engine: 
+       sqlalchemy engine for database
+      schema (str):
+       database schema name 
+      table (str):
+       database table name 
+      year:  (Default value = None)
+
+    Returns:
+      message to see if season specified has all race rounds
+      if missing rounds found then updates the missing rounds if they are avaliable in api
+
     """
     
     #if erorr is through catch the time 
