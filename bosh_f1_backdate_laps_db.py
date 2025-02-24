@@ -1,5 +1,5 @@
 """ 
-script back dates the laps data for seasons specified or the latest rounds
+script back dates the laps data for seasons specified
 only works if result for round and race already in database because must pull by driverid
 """
 import requests
