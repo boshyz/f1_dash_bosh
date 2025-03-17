@@ -82,9 +82,12 @@ def db_sprint_update(engine, schema:str, table:str,year=None):
     time_to_try_again_datetime = dt.datetime.now() +dt.timedelta(hours=1)
     hour, mins = time_to_try_again_datetime.time().hour, time_to_try_again_datetime.time().minute
 
+    #year to use in print out
+    year = dt.datetime.now().year
+
     try:
         #get_race_url returns the right urls that need to be retrieved.
-        sprint_urls, rounds = get_race_url(engine, schema, table, year)
+        sprint_urls, rounds = get_race_url(engine, schema, table)
         if len(sprint_urls) == 0:
             print(f"Table {table} all up to date for season {year}")
         else:
