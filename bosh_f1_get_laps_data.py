@@ -220,11 +220,13 @@ def get_laps_round_update(laps_url)->pd.DataFrame:
     else: 
         
         fin_laps = pd.DataFrame()
+        index = 0
         #loop through each driver's lap url
-        for lap in laps_url:
-            laps_data = get_laps_single(lap )
+        while index < len(laps_url):
+            laps_data = get_laps_single(laps_url[index] )
+            index += 1
             if laps_data.empty ==True:
-                fin_laps =  pd.DataFrame()
+                continue
             else:
                 fin_laps = pd.concat([fin_laps, laps_data], axis =0)
 
