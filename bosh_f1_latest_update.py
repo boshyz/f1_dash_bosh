@@ -10,11 +10,11 @@ from dotenv import load_dotenv
 import os
 import openpyxl
 
-from bosh_f1_race_results import db_races_update
+from bosh_f1_race_results import db_races_update, get_race_url
 from bosh_f1_sprint_results import db_sprint_update
 from bosh_f1_season_schedule import db_seasons_update
 from bosh_f1_get_laps_data import get_laps_data
-from utils import get_engine, latest_laps_update_excel,latest_points_update_excel 
+from utils import get_engine, latest_laps_update_excel,latest_points_update_excel, backdate_points_data_excel,backdate_laps_data_excel
 #set up engine enter the database name in as str change accordingly
 #use.env to set up your own URI crendentials
 engine = get_engine('bosh_f1')
@@ -42,7 +42,8 @@ laps_table = 'lap'
 col = 'season'
 year = 2025
 
-
+# only run this if the latest schedule is not in database uncomment below line 38
+#db_seasons_update(engine,schema, season_table, year)
 
 
 # only run this if the latest schedule is not in database uncomment below line 38
@@ -58,6 +59,3 @@ latest_points_update_excel(engine,schema,col,race_table, sprint_table)
 get_laps_data(engine,  schema, laps_table)
 #update laps data to excel for tableau
 latest_laps_update_excel(engine,schema,col,laps_table)
-
-
-
