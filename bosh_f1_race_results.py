@@ -60,6 +60,7 @@ def get_race_url(engine, schema:str, table:str,year =None):
         missing_rounds_db, last_30_day_rounds =  get_missing_rounds(engine,schema,table,year)
         #filter for races from this years schedule's who qualifying date occured on or after 30 days before today's date
         if table == 'race' or table == 'races':
+
             race_result_url = [f'http://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in last_30_day_rounds]
             return race_result_url, last_30_day_rounds
         elif table == 'sprint' :
@@ -278,10 +279,13 @@ def db_races_update(engine, schema:str, table:str,year=None):
     time_to_try_again_datetime = dt.datetime.now() +dt.timedelta(hours=1)
     hour, mins = time_to_try_again_datetime.time().hour, time_to_try_again_datetime.time().minute
 
+    #year to be used in print out message
+    year = dt.datetime.now().year
+
     
     #all missing rounds if returned come in lists, if list is empty the table is up to date 
     try:
-        race_urls, rounds = get_race_url(engine, schema, table,year)
+        race_urls, rounds = get_race_url(engine, schema, table)
         if len(rounds) ==0:
             print(f"Table {table} is all up to date for season {year}")
     
@@ -293,6 +297,8 @@ def db_races_update(engine, schema:str, table:str,year=None):
             else:
                 #check table actually exists first
                 db_update_check(df,engine,schema, table)
+                result = pd.read_sql(f'select round, count(*) from {schema}.{table} where round in ({rounds[0]}) group by 1', engine).sort_values(by = 'round',ascending = False)
+                print(result)
         #if multiple rounds were entered loop through list
         else:
             for race, r in zip(race_urls, rounds):
@@ -303,8 +309,8 @@ def db_races_update(engine, schema:str, table:str,year=None):
                     #check table actually exists first
                     db_update_check(df,engine,schema, table)
             
-        result = pd.read_sql(f'select round, count(*) from {schema}.{table} where round in {tuple(rounds)} group by 1', engine).sort_values(by = 'round',ascending = False)
-        print(result)
+                    result = pd.read_sql(f'select round, count(*) from {schema}.{table} where round in {tuple(rounds)} group by 1', engine).sort_values(by = 'round',ascending = False)
+                    print(result)
     except KeyError:
         print(f'Jolpica Api has reached it maximum rate limit of 500 runs per hour please try again after {hour}:{mins}')
     
