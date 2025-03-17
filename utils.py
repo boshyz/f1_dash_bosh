@@ -487,6 +487,7 @@ def get_missing_rounds(engine,schema, table, year):
     """
     
     last_30_days_check = dt.datetime.today() - dt.timedelta(days = 30)
+    today =  dt.datetime.today() 
 
     #check if table in database
     #if table not in database it will return 200
@@ -498,7 +499,7 @@ def get_missing_rounds(engine,schema, table, year):
 
     else:
         #if table is in database see if data for season is in table  it will return 100
-        rounds_in_season_db = get_rounds_in_table_db(engine, schema,table,year)
+        rounds_in_season_db = get_rounds_in_table_db(engine, schema, 'season',year)
         #if season not in db return 0
         if len(rounds_in_season_db) == 0:
             print(f"No data for season {year} exists in table {table}")
@@ -510,7 +511,7 @@ def get_missing_rounds(engine,schema, table, year):
                
                 rounds_for_missing = sch_rounds_season.loc[sch_rounds_season.sprint_date <= last_30_days_check, 'round'].to_list()
                 #return rounds who's sprint dates occur after today's date minus 30 days
-                last_30_days_del = sch_rounds_season.loc[sch_rounds_season.sprint_date >= last_30_days_check, 'round'].to_list()
+                last_30_days_del = sch_rounds_season.loc[np.logical_and(sch_rounds_season.sprint_date >= last_30_days_check , sch_rounds_season.sprint_date <= today)  , 'round'].to_list()
                 missing_rounds = [i for i in rounds_for_missing if i not in rounds_in_season_db]
                 print(f"Table {table} is missing the following rounds: {missing_rounds} for season {year}")
                 print(f"Table {table} should delete the following rounds that exceed last 30 day lookback: {last_30_days_del} for season {year}")
@@ -520,7 +521,7 @@ def get_missing_rounds(engine,schema, table, year):
                 sch_rounds_season = get_rounds_date_for_season(engine, schema, table, year)
 
                 rounds_for_missing = sch_rounds_season.loc[sch_rounds_season.date <= last_30_days_check, 'round'].to_list()
-                last_30_days_del = sch_rounds_season.loc[sch_rounds_season.date >= last_30_days_check, 'round'].to_list()
+                last_30_days_del = sch_rounds_season.loc[np.logical_and(sch_rounds_season.date >= last_30_days_check , sch_rounds_season.date <= today), 'round'].to_list()
                 missing_rounds = [i for i in rounds_for_missing if i not in rounds_in_season_db]
                 print(f"Table {table} is missing the following rounds: {missing_rounds} for season {year}")
                 print(f"Table {table} should delete the following rounds that exceed last 30 day lookback: {last_30_days_del} for season {year}")
@@ -663,9 +664,10 @@ def backdate_points_data_excel(engine,schema:str,col:str,race_table:str, sprint_
         for col_val in col_values:
             race = pd.read_sql(f'SELECT * FROM {schema}.{race_table} where {col} = {col_val }', engine)
             sprint = pd.read_sql(f'SELECT * FROM {schema}.{sprint_table} where {col} = {col_val }', engine)
-            race_sprint = pd.concat([race, sprint])
+            race_sprint = [race, sprint]
+            race_sprint_fin = pd.concat([df for df in race_sprint if not df.empty])
             sheet_name = f'race_sprint_{col_val}'
-            race_sprint.to_excel(writer,sheet_name=sheet_name, index = False)
+            race_sprint_fin.to_excel(writer,sheet_name=sheet_name, index = False)
             print(f"Season {col_val} successfully upated to {excel} with {len(race_sprint)} rows")
 
 
@@ -705,10 +707,12 @@ def latest_points_update_excel(engine,schema:str,col:str,race_table:str, sprint_
         sheet_name = f'race_sprint_{Year}'
         race = pd.read_sql(f"SELECT * FROM {schema}.{race_table} where season = {Year}",engine)
         sprint = pd.read_sql(f"SELECT * FROM {schema}.{sprint_table} where season = {Year}",engine)
-        race_sprint = pd.concat([race, sprint])
-        with pd.ExcelWriter(excel) as writer:
+        #list of dfs
+        race_sprint = [race, sprint]
+        race_sprint_fin = pd.concat([df for df in race_sprint if not df.empty ])
+        with pd.ExcelWriter(excel, engine='openpyxl', mode = 'a', if_sheet_exists = 'replace') as writer:
             # Now here add your new sheets
-            race_sprint.to_excel(writer,sheet_name=sheet_name, index = False)
+            race_sprint_fin.to_excel(writer,sheet_name=sheet_name, index = False)
             print(f"{Year} successfully upated to {excel} with {len(race_sprint)} rows")
 
 
@@ -769,7 +773,7 @@ def latest_laps_update_excel(engine,schema:str,col:str,lap_table:str):
         print(f"There are no races whose start date exceeds the 30 day lookback window from today, no updates made")
     else:
         #since each year is stored as a sheet you need to delete and replace the entire year
-        with pd.ExcelWriter(excel) as writer:
+        with pd.ExcelWriter(excel, engine='openpyxl', mode='a', if_sheet_exists = 'replace') as writer:
             laps = pd.read_sql(f'SELECT * FROM {schema}.{lap_table} where {col} = {Year }', engine)
             sheet_name = f'laps_{Year}'
             laps.to_excel(writer,sheet_name=sheet_name, index = False)
