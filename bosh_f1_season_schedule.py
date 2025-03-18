@@ -167,6 +167,11 @@ def db_seasons_update(engine,schema:str, table:str,start:int,*end):
        message about what seasons are in season schedule table of database
 
     """
+    #updated to include new refreshes incase current year's schedule changes
+    date_check = dt.datetime.today() -dt.timedelta(days=1)
+    date_check = date_check.date()
+    Year= date_check.year
+
     #seasons currently in seasons table in db
     seasons_in_db = pd.read_sql(f'select distinct season from {schema}.{table}',engine).season.unique()
     #if end year given 
@@ -182,7 +187,7 @@ def db_seasons_update(engine,schema:str, table:str,start:int,*end):
                 print(f"season:{i} already in season table")
     #if only start given then update database with season schedule if missing
     else:
-        if start not in seasons_in_db:
+        if start not in seasons_in_db or start == Year:
             df = get_season_schedule(start)
             db_update_check(df,engine,schema, table)
         else:
@@ -210,30 +215,11 @@ def backdate_seasons_excel(engine,schema:str,season_table:str):
 
     """
     excel = "season_schedule_for_tableau.xlsx"
-    date_check_max = dt.datetime.today()
-    Year= date_check_max.year
     latest_season = pd.read_sql(f"SELECT MAX(season) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
-    if latest_season == Year:
-        print(f'The latest season avaliable is season {latest_season}') 
-        #if latest season in excel is same as current year don't update        
-        if pd.read_excel("season_schedule_for_tableau.xlsx", sheet_name='seasons')['season'].max() == Year:
-            print(f'The latest season is still {latest_season}. No excel update made')
-        else:
-            with pd.ExcelWriter(excel) as writer:
-                season = pd.read_sql(f'SELECT * FROM {schema}.{season_table} ', engine)
-                sheet_name = 'seasons'
-                season .to_excel(writer,sheet_name=sheet_name, index = False)
-                print(f"Season successfully upated to {excel} with {len(season)} rows to include season {Year}")
-    else:
-        #if the current date's year is not same as latest season in db pull from api to get result
-        db_seasons_update(engine,schema, season_table,Year)
-        #check if db now has latest season
-        latest_season = pd.read_sql(f"SELECT MAX(season) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
-        if latest_season == Year:
-            with pd.ExcelWriter(excel) as writer:
-                season = pd.read_sql(f'SELECT * FROM {schema}.{season_table} ', engine)
-                sheet_name = 'seasons'
-                season .to_excel(writer,sheet_name=sheet_name, index = False)
-                print(f"Season successfully upated to {excel} with {len(season)} rows to include season {Year}")
-        else:
-            print(f'The latest season schedule for {Year} is not yet available. The latest season is still {latest_season}. No excel update made')           
+    
+    with pd.ExcelWriter(excel) as writer:
+      season = pd.read_sql(f'SELECT * FROM {schema}.{season_table} ', engine)
+      sheet_name = 'seasons'
+      season.to_excel(writer,sheet_name=sheet_name, index = False)
+      print(f"Season successfully upated to {excel} with {len(season)} rows to include season {latest_season}")
+         
