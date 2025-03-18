@@ -12,7 +12,7 @@ import openpyxl
 
 from bosh_f1_race_results import db_races_update, get_race_url
 from bosh_f1_sprint_results import db_sprint_update
-from bosh_f1_season_schedule import db_seasons_update
+from bosh_f1_season_schedule import db_seasons_update,backdate_seasons_excel
 from bosh_f1_get_laps_data import get_laps_data
 from utils import get_engine, latest_laps_update_excel,latest_points_update_excel, backdate_points_data_excel,backdate_laps_data_excel
 #set up engine enter the database name in as str change accordingly
@@ -42,12 +42,12 @@ laps_table = 'lap'
 col = 'season'
 year = 2025
 
-# only run this if the latest schedule is not in database uncomment below line 38
-#db_seasons_update(engine,schema, season_table, year)
 
 
-# only run this if the latest schedule is not in database uncomment below line 38
+# only run this if the latest schedule is not in database or if need up update the latest scheudle again uncomment below line 48 and 49
 #db_seasons_update(engine,schema, season_table, year)
+#backdate_seasons_excel(engine,schema,season_table)
+
 
 #update race data to database
 db_races_update(engine, schema, race_table)
