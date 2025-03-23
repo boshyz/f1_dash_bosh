@@ -51,6 +51,10 @@ def get_sprint_results(sprint_url):
         df.columns = df.columns.str.replace(".","_")
         #tidy names to make it easier to query in sqlachemy
         df.rename(str.lower, axis =1, inplace=True)
+        #rename driver_driverid to driverid
+        df = df.rename(columns = {"driver_driverid": 'driverid'})
+        #drop fastestlap_rank col
+        df = df.drop(columns = ["fastestlap_rank"])
         return df
 
 def db_sprint_update(engine, schema:str, table:str,year=None):
