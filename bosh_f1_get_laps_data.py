@@ -12,7 +12,6 @@ import psycopg2
 import datetime as dt
 import os
 import openpyxl
-from bosh_f1_season_schedule import get_season_sch_db
 from utils import  get_data, append_or_replace, clean_lap_position, update_table, create_date_field, convert_df_types
 
 def get_pit_url(year:int ,round:int)->str:
