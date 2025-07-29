@@ -80,7 +80,7 @@ col = 'season'
 
 #back date race results from 2001 till 2025:
 for i in np.arange(start,end+1):
-    db_race_update(engine, schema, race_table, i)
+    db_races_update(engine, schema, race_table, i)
 
 
 
