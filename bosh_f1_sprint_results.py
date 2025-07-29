@@ -1,3 +1,4 @@
+
 """A module to retrieve the sprint results from the jolpica API sprint end point
  use this as reference: https://github.com/jolpica/jolpica-f1/tree/main/docs
  """
@@ -12,7 +13,6 @@ import psycopg2
 import datetime as dt
 import os
 import openpyxl
-from bosh_f1_season_schedule import  check_seasons,get_season_sch_db
 from utils import db_update_check, get_data, get_missing_rounds, update_table, create_date_field, convert_df_types, check_db_for_season
 from bosh_f1_race_results import get_race_url     
              
