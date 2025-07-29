@@ -24,6 +24,7 @@ def get_engine(db_name):
 
     """
     global engine
+    load_dotenv(".env")
     BOSHF1_POSTGRES_URI = os.getenv('BOSHF1_POSTGRES_URI')
     password = BOSHF1_POSTGRES_URI+db_name
     # return engine for sqlclchemy
