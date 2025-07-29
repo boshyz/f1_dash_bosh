@@ -12,7 +12,7 @@ import psycopg2
 import datetime as dt
 import os
 import openpyxl
-from bosh_f1_season_schedule import  check_seasons,get_season_sch_db
+from bosh_f1_season_schedule import get_season_sch_db
 from utils import  get_data, append_or_replace, clean_lap_position, update_table, create_date_field, convert_df_types
 
 def get_pit_url(year:int ,round:int)->str:
@@ -89,10 +89,7 @@ def get_laps_url(engine, schema, table, year:int, round:int)->list:
        
 
     """
-    
-    #check that seasons is latest seasons if not update to the latest year in db for use by using 
-    #race schedule api endpoint 
-    check_seasons( engine, schema, 'season')
+   
     
     #there is at least a 1 day delay so only return race rounds that have commenced atleast 1 day before today's date
     #all race urls are made by using the race season(year) schdedule stored in the database
