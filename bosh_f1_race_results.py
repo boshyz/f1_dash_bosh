@@ -1,3 +1,4 @@
+
 """A module to retrieve the race outcomes from the jolpica API race end point and store 
 in specified table of database
  uses this doc as reference: https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/results.md
@@ -14,7 +15,6 @@ import psycopg2
 import datetime as dt
 import os
 import openpyxl
-from bosh_f1_season_schedule import  check_seasons
 from utils import db_update_check,  convert_df_types ,get_missing_rounds, get_rounds_date_for_season
 
 
@@ -42,9 +42,7 @@ def get_race_url(engine, schema:str, table:str,year =None):
 
     """
 
-    #check that seasons is latest seasons if not update to the latest year in db for use by using 
-    #race schedule api endpoint 
-    check_seasons( engine, schema, 'season')
+
     
     #there is at least a 1 day delay so only return race rounds that have commenced atleast 1 day before today's date
     #all race urls are made by using the race season(year) schdedule stored in the database
@@ -56,15 +54,19 @@ def get_race_url(engine, schema:str, table:str,year =None):
     #if year is none return todays' date's year:
     if year == None:
         year = Year
+
+
+
+        
         #delete rounds are in db that exceed last 30 days
         missing_rounds_db, last_30_day_rounds =  get_missing_rounds(engine,schema,table,year)
         #filter for races from this years schedule's who qualifying date occured on or after 30 days before today's date
         if table == 'race' or table == 'races':
 
-            race_result_url = [f'http://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in last_30_day_rounds]
+            race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in last_30_day_rounds]
             return race_result_url, last_30_day_rounds
         elif table == 'sprint' :
-            race_result_url = [f'http://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in last_30_day_rounds]
+            race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in last_30_day_rounds]
             return race_result_url, last_30_day_rounds
 
 
@@ -74,10 +76,10 @@ def get_race_url(engine, schema:str, table:str,year =None):
         #if the missing rounds is an int i.e equal to 100 or 200 that means the table does not exist or is missing all of its data
         if type(missing_rounds)!= int:
             if table == 'race' or table == 'races':
-                race_result_url = [f'http://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in missing_rounds]
+                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in missing_rounds]
                 return race_result_url, missing_rounds
             elif table == 'sprint' :
-                race_result_url = [f'http://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in missing_rounds]
+                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in missing_rounds]
                 return race_result_url,  missing_rounds
         #if table does not exist then return all possible rounds for that year have date or sprint_date that are less
         #than today's date minus 1 day
@@ -85,11 +87,11 @@ def get_race_url(engine, schema:str, table:str,year =None):
             sch_rounds_season = get_rounds_date_for_season(engine, schema, table, year)
             if table == 'race' or table == 'races':
                 missing_rounds = sch_rounds_season.loc[sch_rounds_season.date <= date_check_max, 'round'].to_list()
-                race_result_url = [f'http://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in missing_rounds]
+                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in missing_rounds]
                 return race_result_url,missing_rounds
             elif table == 'sprint' :
                 missing_rounds = sch_rounds_season.loc[sch_rounds_season.sprint_date <= date_check_max, 'round'].to_list()
-                race_result_url = [f'http://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in missing_rounds]
+                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in missing_rounds]
                 return race_result_url, missing_rounds
 
 
@@ -152,7 +154,7 @@ def get_race_results(race_url)-> pd.DataFrame:
     actual race figures includes points!!!
     results end point
     
-    uses jolpica endpoint: http://api.jolpi.ca/ergast/f1/{year}/{r}/results/
+    uses jolpica endpoint: https://api.jolpi.ca/ergast/f1/{year}/{r}/results/
     
            '
 
