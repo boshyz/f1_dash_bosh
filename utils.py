@@ -401,8 +401,8 @@ def get_rounds_date_for_season(engine, schema:str,table:str,year:int):
 
     """
 
-    #last_30_days_check = str(dt.datetime.today().date() - dt.timedelta(days = 30))
-    #year , month, day = last_30_days_check.year, last_30_days_check.month, last_30_days_check.day
+    last_30_days_check = (dt.datetime.today().date() - dt.timedelta(days = 30))
+    year , month, day = last_30_days_check.year, last_30_days_check.month, last_30_days_check.day
     #
     #race_query = f"SELECT DISTINCT round FROM {schema}.season WHERE season = {year} AND date <= '{last_30_days_check}' " 
     #sprint_query = f"SELECT DISTINCT round FROM {schema}.season WHERE season = {year} AND sprint_date IS NOT NULL AND sprint_date <= '{last_30_days_check}' "
@@ -779,4 +779,3 @@ def latest_laps_update_excel(engine,schema:str,col:str,lap_table:str):
             sheet_name = f'laps_{Year}'
             laps.to_excel(writer,sheet_name=sheet_name, index = False)
             print(f"Season {Year} successfully upated to {excel} with {len(laps)} rows")
-
