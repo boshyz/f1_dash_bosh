@@ -1,319 +1,116 @@
-
-"""A module to retrieve the race outcomes from the jolpica API race end point and store 
-in specified table of database
- uses this doc as reference: https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/results.md
- """
-
-#bosh_f1_season_race_results gets the season race results from jolpica
+"""functions to help update in database and format help format api endpoints"""
 
 import requests
 import pandas as pd
 import numpy as np
 import datetime as dt
-from sqlalchemy import types, create_engine
+from sqlalchemy import types, create_engine, text
 import psycopg2
 import datetime as dt
+from googleapiclient.discovery import build
+from dotenv import load_dotenv
 import os
 import openpyxl
-from utils import db_update_check,  convert_df_types ,get_missing_rounds, get_rounds_date_for_season
+from utils import get_engine, convert_df_types, create_date_field, db_update_check
 
 
 
-def get_race_url(engine, schema:str, table:str,year =None):
-    """returns the race or sprint url tha needs to pulled from the api for a season
-    races urls are the base to retrieve race results data
-    race urls also serve as basis to retrieve qualifying and pit stop data
-    uses the season schedule stored in database to make the race url
-    note data for the latest race does not populate in jolipica api database till day after
-
-    Args:
-      engine: 
-       sqlalchmey database engine
-      schema (str): 
-       name of database schema
-      table (str):
-       name of database table 
-      year:  (Default value = None)
-
-    Returns:
-      2 lists:
-      race_results_url: a of the race urls for rounds that are missing so can use requests to extract data
-      last_30_day_rounds/missing rounds: list of ints of missing rounds for that season
-
-    """
+#bosh_f1_season_schedule
+def get_season_schedule_url(year:int= None):
+    """returns the season url for the jolpica API the given year entered"""
+    current_year = dt.date.today().year
+    # return the current year if empty else use the input
+    Year = [current_year if year == None else year][0]
+    season_url = f'https://api.jolpi.ca/ergast/f1/{Year}.json'
+    return season_url
 
 
     
-    #there is at least a 1 day delay so only return race rounds that have commenced atleast 1 day before today's date
-    #all race urls are made by using the race season(year) schdedule stored in the database
-    date_check_max = dt.datetime.today()-dt.timedelta(days=1)
-    Year= date_check_max.year
-    #if year is left empty, this will use today's date's year for latest and will filter for races or sprints
-    #that have date or sprint greater than todays date minus last 30 days
-    
-    #if year is none return todays' date's year:
-    if year == None:
-        year = Year
-
-
-
-        
-        #delete rounds are in db that exceed last 30 days
-        missing_rounds_db, last_30_day_rounds =  get_missing_rounds(engine,schema,table,year)
-        #filter for races from this years schedule's who qualifying date occured on or after 30 days before today's date
-        if table == 'race' or table == 'races':
-
-            race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in last_30_day_rounds]
-            return race_result_url, last_30_day_rounds
-        elif table == 'sprint' :
-            race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in last_30_day_rounds]
-            return race_result_url, last_30_day_rounds
-
-
-    # if year is entered then return the urls for the missing rounds not currently in db
+#bosh_f1_season_schedule
+def get_season_schedule(year:int= None):
+    #get season url
+    season_url = get_season_schedule_url(year)
+    #requests pull
+    sch = requests.get(season_url).json()
+    #filter for race schedule data from api and return as df
+    data = pd.json_normalize(sch['MRData']['RaceTable']['Races'])
+    #if schedule does not exist print error mesage and return empty df
+    if data.empty == True:
+        print(f"Season schedule for year {year} not yet avaliable please try again later")
+        return data
+    #if df is not empty clean it to fit the database
     else:
-        missing_rounds, last_30_day_rounds =  get_missing_rounds(engine,schema,table,year)
-        #if the missing rounds is an int i.e equal to 100 or 200 that means the table does not exist or is missing all of its data
-        if type(missing_rounds)!= int:
-            if table == 'race' or table == 'races':
-                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in missing_rounds]
-                return race_result_url, missing_rounds
-            elif table == 'sprint' :
-                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in missing_rounds]
-                return race_result_url,  missing_rounds
-        #if table does not exist then return all possible rounds for that year have date or sprint_date that are less
-        #than today's date minus 1 day
-        else:
-            sch_rounds_season = get_rounds_date_for_season(engine, schema, table, year)
-            if table == 'race' or table == 'races':
-                missing_rounds = sch_rounds_season.loc[sch_rounds_season.date <= date_check_max, 'round'].to_list()
-                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/results/' for r in missing_rounds]
-                return race_result_url,missing_rounds
-            elif table == 'sprint' :
-                missing_rounds = sch_rounds_season.loc[sch_rounds_season.sprint_date <= date_check_max, 'round'].to_list()
-                race_result_url = [f'https://api.jolpi.ca/ergast/f1/{year}/{r}/sprint/' for r in missing_rounds]
-                return race_result_url, missing_rounds
+        #replace column names to be easier to use in python replace "." to "_"
+        data.columns = data.columns.str.replace('.','_')
+        data.rename(str.lower, axis = 1, inplace=True)
+        data = convert_df_types(data,['season','round'],int)
+        #make all date fields datetime
+        date_cols = data.filter(like = 'date', axis = 1).columns
+        sch = create_date_field(data, date_cols)
+        return sch
 
 
-def get_race_qualifying_results(qualifying_url)-> pd.DataFrame:
-    """returns the race qualifying results for a race selected using round and year
-    qualifying results may differ to starting position because of grid penalties
-    includes quali time for each quarter if avaliable by driver and final qualifying position
-    
-    uses jolpica endpoint: http://api.jolpi.ca/ergast/f1/{year}/{r}/qualifying/'
-    
-    #for some weird reason austin 2015 has no Q3 in api which matches this
-    https://www.formula1.com/en/results/2015/races/933/united-states/qualifying
 
-    Args:
-      qualifying_url (str):
-        str end point for a given round and season to retrieve the qualifying results  
+def db_seasons_update(engine,schema:str, table:str,start:int,*end):
+    """checks if season entered already in seasons table in db if so prints that data is present
+    else updates with the range"""
+    #this year
+    this_year = dt.datetime.today().year
+    #seasons currently in seasons table in db
+    seasons_in_db = pd.read_sql(f'select distinct season from {schema}.{table}',engine).season.unique()
 
-    Returns:
-      pandas dataframe of qualifying results for given qualifying url specified for season and round
-
-    """
-
-    #if time out occurs print the url that made it happen
-    print(qualifying_url)
-    # retrieve object and make it a json
-    r = requests.get(qualifying_url).json()
-    # get the qualifying results if not updated in jolipica return empty df
-    data = r['MRData']['RaceTable']['Races']
-    if len(data) == 0:
-        #name columns so can still merge if empty
-        #some reason season 2002 round 1 australia has not qualifying data even though its is in the f1 website-11/12/24
-        #https://www.formula1.com/en/results/2002/races/720/australia/qualifying/0
-        #https://api.jolpi.ca/ergast/f1/2002/1/qualifying/
-        df = pd.DataFrame(columns = ['round', 'season','Q1', 'Q2', 'Q3', 'Driver_driverId','qualifying_result'])
-        return df
-    else:
-        data = data[0]
-        # the 0 is the index bc we only want to run 1 race at a time 
-        df = pd.json_normalize(data['QualifyingResults'])
-        df.loc[:,'round'] = int(data['round'])
-        df.loc[:,'season'] = int(data['season'])
-        #filter only needed cols
-        #df = df.loc[:,['season','round', 'Q1', 'Q2', 'Q3', 'Driver.driverId']]
-        # convert all numeric cols to correct data type
-        df = convert_df_types(df, ['season','round','number','position'],'int64')
-        df = convert_df_types(df, ['Driver.permanentNumber'],float)
-        #make driver dob datetime
-        df['Driver.dateOfBirth'] = pd.to_datetime(df['Driver.dateOfBirth'])
-        #rename columns to be more python friendly to use panads
-        df.columns = df.columns.str.replace(".","_")
-        #the qualifying postion is called grid in race
-        df.rename(columns={'position': 'qualifying_result'}, inplace=True)
-        return df
-    
-
-
-def get_race_results(race_url)-> pd.DataFrame:
-    """returns the RACE (excludes sprint results) results for a race selected using round and year
-    and the laps urls by driver to retrieve the lap position per driver
-    actual race figures includes points!!!
-    results end point
-    
-    uses jolpica endpoint: https://api.jolpi.ca/ergast/f1/{year}/{r}/results/
-    
-           '
-
-    Args:
-      race_url (str): 
-       string end point for a given round and season to retrieve the race outcomes with points  
-
-    Returns:
-      pandas dataframe of results for race from results end point. 
-
-    """
-
-    #if time out occurs print the url that made it happen
-    print(race_url)
-    # retrieve object and make it a json
-    r = requests.get(race_url).json()
-    # get the race info and data
-    #data is still list so you can need to check if it returns any values by using len
-    data = r['MRData']['RaceTable']['Races']
-    if len(data) == 0:
-        #for races that have not occured yet but the sprint or qualifying has
-        return pd.DataFrame()
-    else:
-        data = data[0]
-        # the 0 is the index bc we only want to run 1 race at a time 
-        df = pd.json_normalize(data['Results'])
-        df.loc[:,'round'] = int(data['round'])
-        df.loc[:,'season'] = int(data['season'])
-        #show its race data
-        df.loc[:,'results_type'] = 'race'
-        #drop not needed cols
-        df.drop(columns = ['positionText'], inplace= True)
-        # convert all numeric cols to correct data type
-        df = convert_df_types(df, ['round', 'season','number', 'position', 'grid', 'laps'],'int64')
-        #had to convert points from int to float bc for season 2021 round 12 max get 12.5 points, some drivers don't 
-        #have pernament numbers season 2014 round 1
-        df = convert_df_types(df, ['points','Driver.permanentNumber'],'float')
-        #not all columns have fastest lap info for some reason eg. season 24 round 8 
-        if 'FastestLap.AverageSpeed.speed' in df.columns:
-            df = convert_df_types(df,'FastestLap.AverageSpeed.speed', float)
-        #make driver dob datetime
-        df['Driver.dateOfBirth'] = pd.to_datetime(df['Driver.dateOfBirth'])
-        #rename columns to be more python friendly to use panads
-        df.columns = df.columns.str.replace(".","_")
-        #drivers = df['Driver_driverId'].unique()
-        #get the lap url to get laps data for each drivers
-        #laps_url = [f"https://api.jolpi.ca/ergast/f1/{int(data['season'])}/{int(data['round'])}/drivers/{driver}/laps/?limit=100&offset=0" for driver in drivers]
-        return df 
-
-
-def get_fin_race_results(race_url):
-    """combines, the qualifiyng Q1, Q2, Q3, race results for a given round in a season race
-    will only qualifying if race has not occured yet
-
-    Args:
-      race_url (str): 
-       takes race url generated from previous function that is used to extract api results for given sesaon and round
-
-    Returns:
-      pandas dataframe of merged quali and race results on season, round and driver id 
-      for the season and round in race url
-
-    """
-    
-    #f1 sprints and qualifying occur before races
-
-    # get qualifying url to get times for q1,q2,q3 grid is where people qualified
-    qualifying_url = race_url.replace("results",'qualifying')
-    #get qualifying results
-    qualifying_results = get_race_qualifying_results(qualifying_url)
-    #get race results and lap_urls
-    race_results = get_race_results(race_url)
-    #if race not occured yet it will return empty race_results df
-    if race_results.empty == True: 
-        #make names db friendly for sqlalchmey querying 
-        qualifying_results.rename(str.lower, axis =1, inplace=True)
-        # rename driverid to be same as in final results table
-        qualifying_results.rename({'Driver_driverId':"driverid"}, axis =1, inplace=True)
-        # if there is no sprint return the qualifying results only
-        return qualifying_results
-    #if race data is populated then combine race results with qualifying sprint data and         
-    else:
-        #use race results df as base df and pits df only applies to race data so concat (union) sprint at the end
-        #only keep relevent qualifying cols 
-    
-
-        #for some weird reason austin 2015 has no Q3 in api which matches this  
-        #https://www.formula1.com/en/results/2015/races/933/united-states/qualifying
-        #also https://www.formula1.com/en/results/2005/races/777/europe/qualifying/0 does not have any results.
-        #these are the desired columns that a qualifying data should have
-        desired_qual_cols =  ['round', 'season','Q1', 'Q2', 'Q3', 'Driver_driverId','qualifying_result']
-        #filer the data so that it only includes the columns that are in the desired_qual_cols so can account for fringe examples
-        #in some races where the qualifying data is missing Q3, or Q2 or Q1. 
-        qualifying_results_clean = qualifying_results.loc[:, [c for c in  qualifying_results.columns if c in desired_qual_cols]]
-        #merge the race to cleaned qualifying
-        race_qual = race_results.merge(qualifying_results_clean, how = 'left', on = ['season', 'round', 'Driver_driverId'] )
-        race_qual.rename(columns = {'Driver_driverId': 'driverId'},inplace=True)
-        race_qual.rename(str.lower, axis =1, inplace=True)
-        return race_qual
-    
-
-
-def db_races_update(engine, schema:str, table:str,year=None):
-    """updates db with data correctly
-    
-    #if only one round was entered
-
-    Args:
-      engine: 
-       sqlalchemy engine for database
-      schema (str):
-       database schema name 
-      table (str):
-       database table name 
-      year:  (Default value = None)
-
-    Returns:
-      message to see if season specified has all race rounds
-      if missing rounds found then updates the missing rounds if they are avaliable in api
-
-    """
-    
-    #if erorr is through catch the time 
-    time_to_try_again_datetime = dt.datetime.now() +dt.timedelta(hours=1)
-    hour, mins = time_to_try_again_datetime.time().hour, time_to_try_again_datetime.time().minute
-
-    #year to be used in print out message
-    year = dt.datetime.now().year
-
-    
-    #all missing rounds if returned come in lists, if list is empty the table is up to date 
-    try:
-        race_urls, rounds = get_race_url(engine, schema, table)
-        if len(rounds) ==0:
-            print(f"Table {table} is all up to date for season {year}")
-    
-        # if only 1 round returned extract it so it can work
-        elif len(rounds) ==1: 
-            df = get_fin_race_results(race_urls[0])
-            if df.empty ==True:
-                print(f"Season {year} round {round} is not avaliable via api yet please try again later")
-            else:
-                #check table actually exists first
+  
+    #if end year given 
+    if len(end) == 1:
+        #create range of years from start to end
+        years = sorted(np.arange(start,end[0]+1),reverse=True)
+        #for each year in range, if year not currently in db then pull data from api
+        for i in years:
+            if i not in seasons_in_db:
+                df = get_season_schedule(i)
                 db_update_check(df,engine,schema, table)
-                result = pd.read_sql(f'select round, count(*) from {schema}.{table} where round in ({rounds[0]}) group by 1', engine).sort_values(by = 'round',ascending = False)
-                print(result)
-        #if multiple rounds were entered loop through list
+            else:
+                print(f"season:{i} already in season table")
+    #if only start given then update database with season schedule if missing
+    else:
+        if start not in seasons_in_db or start == this_year:
+            df = get_season_schedule(start)
+            db_update_check(df,engine,schema, table)
+        #ammended to be if start same as this year then update the schedule
         else:
-            for race, r in zip(race_urls, rounds):
-                df = get_fin_race_results(race)
-                if df.empty ==True:
-                    print(f"Season {year} round {r} is not avaliable via api yet please try again later")
-                else:
-                    #check table actually exists first
-                    db_update_check(df,engine,schema, table)
+          print(f"Season {start} already in seasons table in database")
             
-                    result = pd.read_sql(f'select round, count(*) from {schema}.{table} where round in {tuple(rounds)} group by 1', engine).sort_values(by = 'round',ascending = False)
-                    print(result)
-    except KeyError:
-        print(f'Jolpica Api has reached it maximum rate limit of 500 runs per hour please try again after {hour}:{mins}')
-    
+
+
+#db_points_update(engine, 'f1_dash', 'race') 
+def backdate_seasons_excel(engine,schema:str,col:str,season_table:str):
+    """updates season schedule data to xlxs for tableau dash
+    if season is missing current year """
+    excel = "season_schedule_for_tableau.xlsx"
+    date_check_max = dt.datetime.today()
+    Year= date_check_max.year
+    latest_season = pd.read_sql(f"SELECT MAX({col}) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
+    if latest_season == Year:
+        print(f'The latest season avaliable is season {latest_season}') 
+        #if latest season in excel is same as current year don't update        
+        if pd.read_excel("season_schedule_for_tableau.xlsx", sheet_name='seasons')['season'].max() == Year:
+            with pd.ExcelWriter(excel, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                season = pd.read_sql(f'SELECT * FROM {schema}.{season_table} ', engine)
+                sheet_name = 'seasons'
+                season .to_excel(writer,sheet_name=sheet_name, index = False)
+                print(f"Latest season schedule for season {Year} successfully upated to {excel} with {len(season)} rows")
+       
+    else:
+        #if the current date's year is not same as latest season in db pull from api to get result
+        db_seasons_update(engine,schema, season_table,Year)
+        #check if db now has latest season
+        latest_season = pd.read_sql(f"SELECT MAX({col}) latest_season FROM {schema}.{season_table}",engine)['latest_season'][0]
+        if latest_season == Year:
+            with pd.ExcelWriter(excel) as writer:
+                season = pd.read_sql(f'SELECT * FROM {schema}.{season_table} ', engine)
+                sheet_name = 'seasons'
+                season .to_excel(writer,sheet_name=sheet_name, index = False)
+                print(f"Season successfully upated to {excel} with {len(season)} rows to include season {Year}")
+        else:
+            print(f'The latest season schedule for {Year} is not yet available. The latest season is still {latest_season}. No excel update made')
             
